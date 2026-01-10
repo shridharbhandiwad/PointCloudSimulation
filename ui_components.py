@@ -259,14 +259,23 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
             self.plot.addItem(it)
             self.lanes_items.append(it)
 
-        # --- vehicles (car/truck only) ---
+        # --- vehicles (all participant types) ---
+        # Color coding: car=gray, truck=white, twowheeler=yellow, bicycle=green, pedestrian=magenta
+        label_colors = {
+            "car": (200, 200, 200, 160),
+            "truck": (255, 255, 255, 180),
+            "twowheeler": (255, 220, 100, 180),
+            "bicycle": (100, 255, 100, 180),
+            "pedestrian": (255, 100, 255, 180),
+        }
         veh_spots = []
         for o in objects:
-            if o["label"] not in ("car", "truck"):
+            if o["label"] not in label_colors:
                 continue
+            color = label_colors.get(o["label"], (200, 200, 200, 160))
             veh_spots.append({
                 "pos": (float(o["pos"][1]), float(o["pos"][0])),  # (Y, X)
-                "brush": pg.mkBrush(200, 200, 200, 160),
+                "brush": pg.mkBrush(*color),
                 "pen": None
             })
         self.veh_scatter.setData(veh_spots)
@@ -290,7 +299,8 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
             self.det_scatter.setData([])
 
         # --- bboxes ---
-        existing_pids = {o["participant_id"] for o in objects if o["label"] in ("car", "truck")}
+        all_labels = ("car", "truck", "twowheeler", "bicycle", "pedestrian")
+        existing_pids = {o["participant_id"] for o in objects if o["label"] in all_labels}
         for pid in list(self.bbox_curves.keys()):
             if pid not in existing_pids:
                 self.plot.removeItem(self.bbox_curves[pid])
@@ -298,7 +308,7 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
 
         if show_bbox:
             for o in objects:
-                if o["label"] not in ("car", "truck"):
+                if o["label"] not in all_labels:
                     continue
                 pid = o["participant_id"]
                 bbox = o["bbox_world"]
@@ -321,15 +331,18 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
         radar_pos = radar["pos"]
         cars = sum(1 for o in objects if o["label"] == "car")
         trucks = sum(1 for o in objects if o["label"] == "truck")
+        twowheelers = sum(1 for o in objects if o["label"] == "twowheeler")
+        bicycles = sum(1 for o in objects if o["label"] == "bicycle")
+        pedestrians = sum(1 for o in objects if o["label"] == "pedestrian")
 
         lines = []
-        lines.append(f"Objects: car={cars}  truck={trucks}")
+        lines.append(f"Objects: car={cars}  truck={trucks}  twowheeler={twowheelers}  bicycle={bicycles}  pedestrian={pedestrians}")
         lines.append(f"Radar: x={radar_pos[0]:.1f}  y={radar_pos[1]:.1f}  z={radar_pos[2]:.1f}  yaw={rad2deg(radar['yaw']):.1f}°")
 
         # per-object speed/range/az (from radar)
         xr, yr = float(radar_pos[0]), float(radar_pos[1])
         for o in objects:
-            if o["label"] not in ("car", "truck"):
+            if o["label"] not in all_labels:
                 continue
             px, py = float(o["pos"][0]), float(o["pos"][1])
             vx = float(o["pos"][0]*0)  # placeholder, we compute speed from participant later if needed

@@ -8,7 +8,7 @@ import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 
 from radar_engine import SimEngine, deg2rad, rad2deg
-from radar_io import UdpConfig, UdpSender, CsvLogger, detections_to_rows
+from radar_io import UdpConfig, UdpSender, CsvLogger, ObjectFeatureLogger, detections_to_rows, objects_to_feature_rows
 from ui_components import (
     BirdsEyeWindow,
     rcs_to_rgba,
@@ -37,6 +37,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.udp_cfg = UdpConfig(enabled=False, ip="127.0.0.1", port=5005, as_json=True)
         self.udp = UdpSender(self.udp_cfg)
         self.logger = CsvLogger()
+        self.object_logger = ObjectFeatureLogger()
 
         self.bird = BirdsEyeWindow()
         self.bird_visible = False
@@ -174,7 +175,7 @@ class MainWindow(QtWidgets.QMainWindow):
         add_box = QtWidgets.QGroupBox("Add Participant")
         f = QtWidgets.QFormLayout(add_box)
 
-        self.add_type = QtWidgets.QComboBox(); self.add_type.addItems(["car", "truck"])
+        self.add_type = QtWidgets.QComboBox(); self.add_type.addItems(["car", "truck", "twowheeler", "bicycle", "pedestrian"])
         self.add_dir = QtWidgets.QComboBox(); self.add_dir.addItems(["incoming", "outgoing"])
         self.add_speed = QtWidgets.QDoubleSpinBox(); self.add_speed.setRange(0, 60); self.add_speed.setValue(12.0); self.add_speed.setSuffix(" m/s")
         self.add_lane = QtWidgets.QComboBox()
@@ -259,10 +260,10 @@ class MainWindow(QtWidgets.QMainWindow):
         f.addRow("Port", self.udp_port)
         f.addRow(self.udp_json)
 
-        log_box = QtWidgets.QGroupBox("File Logging")
+        log_box = QtWidgets.QGroupBox("Detection Logging")
         fl = QtWidgets.QFormLayout(log_box)
 
-        self.log_enable = QtWidgets.QCheckBox("Enable CSV/TXT logging")
+        self.log_enable = QtWidgets.QCheckBox("Enable CSV/TXT logging (detections)")
         self.log_path = QtWidgets.QLineEdit("logs/radar_output.csv")
         self.btn_browse = QtWidgets.QPushButton("Browse…")
         self.btn_browse.clicked.connect(self.browse_logfile)
@@ -271,11 +272,24 @@ class MainWindow(QtWidgets.QMainWindow):
         fl.addRow("Log file (.csv/.txt)", self.log_path)
         fl.addRow(self.btn_browse)
 
+        obj_log_box = QtWidgets.QGroupBox("Object Feature Logging (per cycle)")
+        ofl = QtWidgets.QFormLayout(obj_log_box)
+
+        self.obj_log_enable = QtWidgets.QCheckBox("Enable object feature logging")
+        self.obj_log_path = QtWidgets.QLineEdit("logs/object_features.csv")
+        self.btn_obj_browse = QtWidgets.QPushButton("Browse…")
+        self.btn_obj_browse.clicked.connect(self.browse_obj_logfile)
+
+        ofl.addRow(self.obj_log_enable)
+        ofl.addRow("Object log file (.csv)", self.obj_log_path)
+        ofl.addRow(self.btn_obj_browse)
+
         btn_apply = QtWidgets.QPushButton("Apply IO Settings")
         btn_apply.clicked.connect(self.apply_io_config)
 
         v.addWidget(udp_box)
         v.addWidget(log_box)
+        v.addWidget(obj_log_box)
         v.addWidget(btn_apply)
         v.addStretch(1)
 
@@ -432,6 +446,14 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             if self.logger.enabled:
                 self.logger.stop()
+
+        # Object feature logging
+        if self.obj_log_enable.isChecked():
+            if not self.object_logger.enabled:
+                self.object_logger.start(self.obj_log_path.text().strip())
+        else:
+            if self.object_logger.enabled:
+                self.object_logger.stop()
 
     # ---------------- Camera ----------------
     def reset_camera_to_radar(self, force: bool = False):
@@ -612,6 +634,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if path:
             self.log_path.setText(path)
 
+    def browse_obj_logfile(self):
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Select object log file", self.obj_log_path.text(), "CSV (*.csv)")
+        if path:
+            self.obj_log_path.setText(path)
+
     # ---------------- Tick ----------------
     def on_tick(self):
         # clutter toggle (engine-side)
@@ -626,6 +653,10 @@ class MainWindow(QtWidgets.QMainWindow):
         rows = detections_to_rows(frame)
         self.udp.send_rows(rows)
         self.logger.write_rows(rows)
+
+        # Log object features each cycle
+        obj_rows = objects_to_feature_rows(frame)
+        self.object_logger.write_rows(obj_rows)
 
         # update table effective power display
         self.update_pr_eff_column(frame["objects"])
@@ -709,6 +740,10 @@ class MainWindow(QtWidgets.QMainWindow):
             pass
         try:
             self.logger.stop()
+        except Exception:
+            pass
+        try:
+            self.object_logger.stop()
         except Exception:
             pass
         try:
