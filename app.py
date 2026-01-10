@@ -13,9 +13,12 @@ from ui_components import (
     BirdsEyeWindow,
     rcs_to_rgba,
     make_cuboid_mesh,
+    make_cuboid_wireframe,
     set_item_pose,
     bbox_polyline_world,
     build_fov_sector_mesh,
+    LABEL_COLORS,
+    LABEL_EDGE_COLORS,
 )
 
 
@@ -61,7 +64,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_tabs()
 
         # visuals
-        self.vehicle_mesh = {}
+        self.vehicle_mesh = {}      # pid -> mesh item (transparent)
+        self.vehicle_edges = {}     # pid -> wireframe line item
         self.bbox_items = {}
 
         self.road_lines = []
@@ -203,9 +207,9 @@ class MainWindow(QtWidgets.QMainWindow):
         list_box = QtWidgets.QGroupBox("Active Participants (effective power uses corner combination)")
         lv = QtWidgets.QVBoxLayout(list_box)
 
-        # Updated columns: includes sigma & Pr_eff
-        self.table = QtWidgets.QTableWidget(0, 9)
-        self.table.setHorizontalHeaderLabels(["PID", "Type", "Dir", "Loop", "LaneY", "SpeedX", "Sigma(m²)", "PrEff(dBm)", "Remove"])
+        # Updated columns: includes sigma, Pr_eff, and detection count
+        self.table = QtWidgets.QTableWidget(0, 10)
+        self.table.setHorizontalHeaderLabels(["PID", "Type", "Dir", "Loop", "LaneY", "SpeedX", "Sigma(m²)", "Dets", "PrEff(dBm)", "Remove"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.itemSelectionChanged.connect(self.on_table_select)
@@ -530,6 +534,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.view3d.removeItem(it)
         self.vehicle_mesh.clear()
 
+        for pid, it in list(self.vehicle_edges.items()):
+            self.view3d.removeItem(it)
+        self.vehicle_edges.clear()
+
         for pid, it in list(self.bbox_items.items()):
             self.view3d.removeItem(it)
         self.bbox_items.clear()
@@ -562,28 +570,37 @@ class MainWindow(QtWidgets.QMainWindow):
             set_cell(4, f"{p.lane_y:.2f}")
             set_cell(5, f"{p.vel[0]:.2f}")
             set_cell(6, f"{p.sigma_m2:.2f}")
-            set_cell(7, "-")  # updated during ticks
+            set_cell(7, "-")  # detection count - updated during ticks
+            set_cell(8, "-")  # pr_eff - updated during ticks
 
             btn = QtWidgets.QPushButton("Remove")
             btn.clicked.connect(lambda _, pid=p.pid: self.remove_pid(pid))
-            self.table.setCellWidget(row, 8, btn)
+            self.table.setCellWidget(row, 9, btn)
 
         self.table.resizeColumnsToContents()
 
     def update_pr_eff_column(self, objects):
-        # called each tick
+        # called each tick - update both detection count and pr_eff
         pid_to_eff = {o["participant_id"]: o.get("pr_eff_dbm") for o in objects}
+        pid_to_dets = {o["participant_id"]: o.get("detection_count", 0) for o in objects}
         for r in range(self.table.rowCount()):
             pid = int(self.table.item(r, 0).text())
+            # Detection count (column 7)
+            det_count = pid_to_dets.get(pid, 0)
+            self.table.item(r, 7).setText(str(det_count))
+            # Pr_eff (column 8)
             val = pid_to_eff.get(pid, None)
             txt = "-" if val is None else f"{val:.1f}"
-            self.table.item(r, 7).setText(txt)
+            self.table.item(r, 8).setText(txt)
 
     def remove_pid(self, pid: int):
         self.engine.remove_participant(pid)
         if pid in self.vehicle_mesh:
             self.view3d.removeItem(self.vehicle_mesh[pid])
             del self.vehicle_mesh[pid]
+        if pid in self.vehicle_edges:
+            self.view3d.removeItem(self.vehicle_edges[pid])
+            del self.vehicle_edges[pid]
         if pid in self.bbox_items:
             self.view3d.removeItem(self.bbox_items[pid])
             del self.bbox_items[pid]
@@ -625,6 +642,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if pid in self.vehicle_mesh:
             self.view3d.removeItem(self.vehicle_mesh[pid])
             del self.vehicle_mesh[pid]
+        if pid in self.vehicle_edges:
+            self.view3d.removeItem(self.vehicle_edges[pid])
+            del self.vehicle_edges[pid]
 
         self.refresh_participant_table()
 
@@ -673,33 +693,64 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fov_outline_outer.setVisible(self.show_fov.isChecked())
             self.fov_outline_inner.setVisible(self.show_fov.isChecked())
 
-        # vehicles
+        # vehicles - transparent with wireframe to highlight detections
         for o in frame["objects"]:
             pid = o["participant_id"]
             pos = o["pos"]
             yaw = o["yaw"]
             L, W, H = o["dims"]
+            label = o["label"]
+
+            # Get colors for this object type
+            mesh_color = LABEL_COLORS.get(label, (0.7, 0.7, 0.7, 0.15))
+            edge_color = LABEL_EDGE_COLORS.get(label, (0.8, 0.8, 0.8, 0.8))
 
             if pid not in self.vehicle_mesh:
+                # Create transparent mesh
                 md = make_cuboid_mesh(L, W, H)
-                mesh = gl.GLMeshItem(meshdata=md, smooth=False, computeNormals=True, shader="shaded", drawEdges=True)
+                mesh = gl.GLMeshItem(
+                    meshdata=md, 
+                    smooth=False, 
+                    computeNormals=True, 
+                    shader="shaded", 
+                    drawEdges=False,
+                    color=mesh_color
+                )
+                mesh.setGLOptions("translucent")
                 self.vehicle_mesh[pid] = mesh
                 self.view3d.addItem(mesh)
+                
+                # Create wireframe edges for visibility
+                edge_verts = make_cuboid_wireframe(L, W, H)
+                edge_item = gl.GLLinePlotItem(
+                    pos=edge_verts,
+                    color=edge_color,
+                    width=2.0,
+                    antialias=True,
+                    mode='lines'
+                )
+                self.vehicle_edges[pid] = edge_item
+                self.view3d.addItem(edge_item)
 
             set_item_pose(self.vehicle_mesh[pid], pos, yaw)
+            set_item_pose(self.vehicle_edges[pid], pos, yaw)
 
         current = {o["participant_id"] for o in frame["objects"]}
         for pid in list(self.vehicle_mesh.keys()):
             if pid not in current:
                 self.view3d.removeItem(self.vehicle_mesh[pid])
                 del self.vehicle_mesh[pid]
+                if pid in self.vehicle_edges:
+                    self.view3d.removeItem(self.vehicle_edges[pid])
+                    del self.vehicle_edges[pid]
 
-        # detections: color by received rcs_dbm
+        # detections: color by received rcs_dbm - prominent display
         if self.show_dets.isChecked() and frame["detections"]:
             pts = []
             vals = []
             for d in frame["detections"]:
-                pts.append([d.x_w, d.y_w, 0.25])
+                # Elevate detections slightly so they're visible through transparent objects
+                pts.append([d.x_w, d.y_w, 0.5])
                 vals.append(float(d.rcs_dbm))
             pts = np.array(pts, dtype=float)
             vals = np.array(vals, dtype=float)
@@ -708,7 +759,8 @@ class MainWindow(QtWidgets.QMainWindow):
             vmax = float(np.percentile(vals, 95))
             colors = rcs_to_rgba(vals, vmin, vmax)
 
-            self.det_scatter.setData(pos=pts, size=5.5, color=colors)
+            # Larger detection points to be clearly visible through transparent objects
+            self.det_scatter.setData(pos=pts, size=8.0, color=colors)
         else:
             self.det_scatter.setData(pos=np.zeros((0, 3)))
 
