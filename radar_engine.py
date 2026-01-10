@@ -75,6 +75,7 @@ class Participant:
 
     direction: str
     lane_y: float
+    detection_range: Tuple[int, int] = (10, 30)  # (min, max) detections for realistic point cloud
     loop: bool = True
     active: bool = True
     desired_speed_mps: float = 12.0   # target cruise speed magnitude
@@ -91,6 +92,95 @@ class Participant:
         ]
         R = rz(self.yaw)
         return [self.pos + (R @ c) for c in corners_local]
+
+    def sample_surface_points(self, rng: np.random.Generator, radar_pos: np.ndarray) -> List[Tuple[np.ndarray, float]]:
+        """
+        Generate realistic point cloud samples on the object's visible surfaces.
+        Returns list of (world_point, point_sigma) tuples.
+        
+        Sampling strategy:
+        - Sample points on visible faces (front/back, sides, top)
+        - Weight sampling towards radar-facing surfaces
+        - Add some height variation for realism
+        - Higher RCS points near corners, edges, and reflective surfaces
+        """
+        L, W, H = self.L, self.W, self.H
+        
+        # Determine number of detections (distance-based scaling)
+        dist_to_radar = float(np.linalg.norm(self.pos[:2] - radar_pos[:2]))
+        
+        # Closer objects get more detections (inverse square-ish relationship)
+        # At 10m: full count; at 100m: ~1/4 of max count
+        distance_factor = min(1.0, max(0.25, 10.0 / (dist_to_radar + 1.0)))
+        
+        min_det, max_det = self.detection_range
+        n_detections = int(rng.integers(
+            max(1, int(min_det * distance_factor)), 
+            max(2, int(max_det * distance_factor)) + 1
+        ))
+        
+        # Calculate which faces are visible to radar
+        R = rz(self.yaw)
+        radar_dir_local = rz(-self.yaw) @ (radar_pos - self.pos)
+        radar_dir_local = radar_dir_local / (np.linalg.norm(radar_dir_local) + 1e-9)
+        
+        # Generate sample points
+        points = []
+        total_sigma = self.sigma_m2
+        
+        for _ in range(n_detections):
+            # Choose which surface to sample from based on radar visibility
+            # Higher probability for radar-facing surfaces
+            
+            # Random selection with bias towards visible faces
+            face_choice = rng.random()
+            
+            if face_choice < 0.4:
+                # Front or back face (X faces)
+                if radar_dir_local[0] > 0:
+                    x_local = L/2 * rng.uniform(0.7, 1.0)  # front face
+                else:
+                    x_local = -L/2 * rng.uniform(0.7, 1.0)  # back face
+                y_local = rng.uniform(-W/2, W/2)
+                z_local = rng.uniform(0.1, H * 0.9)
+                
+            elif face_choice < 0.75:
+                # Side faces (Y faces)
+                x_local = rng.uniform(-L/2, L/2)
+                if radar_dir_local[1] > 0:
+                    y_local = W/2 * rng.uniform(0.7, 1.0)  # right side
+                else:
+                    y_local = -W/2 * rng.uniform(0.7, 1.0)  # left side
+                z_local = rng.uniform(0.1, H * 0.9)
+                
+            else:
+                # Top face or corners (strong reflectors)
+                x_local = rng.uniform(-L/2, L/2)
+                y_local = rng.uniform(-W/2, W/2)
+                z_local = H * rng.uniform(0.5, 1.0)
+            
+            # Add small random jitter for realism
+            x_local += rng.normal(0, L * 0.02)
+            y_local += rng.normal(0, W * 0.02)
+            z_local = max(0.05, min(H, z_local + rng.normal(0, H * 0.02)))
+            
+            # Transform to world coordinates
+            point_local = np.array([x_local, y_local, z_local], dtype=float)
+            point_world = self.pos + (R @ point_local)
+            point_world[2] = 0.0  # Project to ground for radar detection
+            
+            # Assign RCS to this point (distribute total sigma with variation)
+            # Corners and edges have higher RCS
+            corner_factor = 1.0
+            if abs(abs(x_local) - L/2) < L*0.1 and abs(abs(y_local) - W/2) < W*0.1:
+                corner_factor = 2.0  # Corner reflector effect
+            
+            base_sigma = total_sigma / n_detections
+            point_sigma = base_sigma * corner_factor * rng.uniform(0.5, 1.5)
+            
+            points.append((point_world, point_sigma))
+        
+        return points
 
     def step(self, dt: float) -> None:
         self.pos = self.pos + self.vel * dt
@@ -168,13 +258,20 @@ class SimEngine:
         self.random_max_in_scene = 2
 
         # --- target sigma defaults (m^2) ---
-        # These are "total sigma" (distributed across corners).
+        # These are "total sigma" (distributed across detection points).
+        # detection_range: [min_detections, max_detections] - realistic radar point cloud counts
+        # based on typical automotive radar characteristics:
+        # - Car: 15-40 detections (multiple reflectors: bumpers, wheels, license plate, etc.)
+        # - Truck: 30-80 detections (large metal surface, multiple strong reflectors)
+        # - Two-wheeler: 5-12 detections (engine block, wheels, handlebars)
+        # - Bicycle: 2-6 detections (minimal metal, mostly frame and wheels)
+        # - Pedestrian: 1-4 detections (low RCS, mostly torso reflection)
         self.defaults = {
-            "car":       {"L": 4.5, "W": 1.9, "H": 1.6, "sigma_m2": 10.0},
-            "truck":     {"L": 10.0, "W": 2.6, "H": 3.5, "sigma_m2": 30.0},
-            "twowheeler": {"L": 2.2, "W": 0.8, "H": 1.5, "sigma_m2": 3.0},   # motorcycle/scooter
-            "bicycle":   {"L": 1.8, "W": 0.6, "H": 1.7, "sigma_m2": 1.0},   # bicycle with rider
-            "pedestrian": {"L": 0.5, "W": 0.5, "H": 1.75, "sigma_m2": 0.5}, # walking person
+            "car":       {"L": 4.5, "W": 1.9, "H": 1.6, "sigma_m2": 10.0, "detection_range": (15, 40)},
+            "truck":     {"L": 10.0, "W": 2.6, "H": 3.5, "sigma_m2": 30.0, "detection_range": (30, 80)},
+            "twowheeler": {"L": 2.2, "W": 0.8, "H": 1.5, "sigma_m2": 3.0, "detection_range": (5, 12)},   # motorcycle/scooter
+            "bicycle":   {"L": 1.8, "W": 0.6, "H": 1.7, "sigma_m2": 1.0, "detection_range": (2, 6)},   # bicycle with rider
+            "pedestrian": {"L": 0.5, "W": 0.5, "H": 1.75, "sigma_m2": 0.5, "detection_range": (1, 4)}, # walking person
         }
 
         # --- radar equation calibration ---
@@ -357,6 +454,7 @@ class SimEngine:
     def add_participant(self, label: str, direction: str, speed_mps: float, lane_y: float, loop: bool = True) -> Participant:
         d = self.defaults[label]
         L, W, H, sigma = d["L"], d["W"], d["H"], d["sigma_m2"]
+        detection_range = d.get("detection_range", (10, 30))
 
         # pick a valid lane (no opposite direction, spawn clearance)
         li = self._pick_valid_lane(direction=direction, L_new=float(L), preferred_lane_y=float(lane_y))
@@ -377,6 +475,7 @@ class SimEngine:
             sigma_m2=float(sigma),
             direction=direction,
             lane_y=float(lane_y_use),
+            detection_range=tuple(detection_range),
             loop=bool(loop),
             active=True,
             desired_speed_mps=float(abs(speed_mps)),
@@ -562,28 +661,28 @@ class SimEngine:
         objects_out: List[Dict] = []
         nearest: Optional[Detection] = None
         
-        # participants
+        # participants - using realistic point cloud sampling
         for p in self.participants:
-            corners = p.corners_world()
-            sigma_corner = p.sigma_m2 / 4.0  # distribute total sigma across 4 corners
+            # Sample realistic number of points on visible surfaces
+            surface_points = p.sample_surface_points(self.rng, self.radar.pos)
 
-            corner_meas_world_xy = []
+            point_meas_world_xy = []
             pr_mw_sum = 0.0
 
-            for cid, cw in enumerate(corners):
+            for point_id, (point_world, point_sigma) in enumerate(surface_points):
                 det = self._make_detection_from_world_point(
                     participant_id=p.pid,
                     label=p.label,
-                    corner_id=cid,
-                    cw=cw,
+                    corner_id=point_id,  # using corner_id for point_id
+                    cw=point_world,
                     vel_world=p.vel,
-                    sigma_corner_m2=sigma_corner
+                    sigma_corner_m2=point_sigma
                 )
                 if det is None:
                     continue
 
                 detections.append(det)
-                corner_meas_world_xy.append((det.x_w, det.y_w))
+                point_meas_world_xy.append((det.x_w, det.y_w))
 
                 # combine per object effective power
                 pr_mw_sum += self._dbm_to_mw(det.rcs_dbm)
@@ -596,9 +695,9 @@ class SimEngine:
                 pr_eff_dbm = float(self._mw_to_dbm(pr_mw_sum))
 
             bbox_world = None
-            if len(corner_meas_world_xy) > 0:
-                xs = [pt[0] for pt in corner_meas_world_xy]
-                ys = [pt[1] for pt in corner_meas_world_xy]
+            if len(point_meas_world_xy) > 0:
+                xs = [pt[0] for pt in point_meas_world_xy]
+                ys = [pt[1] for pt in point_meas_world_xy]
                 bbox_world = {
                     "xmin": float(min(xs)),
                     "xmax": float(max(xs)),
@@ -621,6 +720,7 @@ class SimEngine:
                 "bbox_world": bbox_world,
                 "vel": p.vel.copy(),
                 "speed_mps": float(np.linalg.norm(p.vel[:2])),
+                "detection_count": len(point_meas_world_xy),  # track actual detections
 
             })
 

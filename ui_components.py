@@ -81,6 +81,54 @@ def make_cuboid_mesh(L: float, W: float, H: float) -> gl.MeshData:
     return gl.MeshData(vertexes=verts, faces=faces)
 
 
+def make_cuboid_wireframe(L: float, W: float, H: float) -> np.ndarray:
+    """
+    Create wireframe edges for a cuboid (for transparent object visualization).
+    Returns array of line segments suitable for GLLinePlotItem.
+    """
+    x = L / 2.0
+    y = W / 2.0
+    z0 = 0.0
+    z1 = H
+
+    # 8 vertices
+    v = np.array([
+        [-x, -y, z0], [ x, -y, z0], [ x,  y, z0], [-x,  y, z0],
+        [-x, -y, z1], [ x, -y, z1], [ x,  y, z1], [-x,  y, z1],
+    ], dtype=float)
+
+    # 12 edges of a cuboid (connected as line strip)
+    # Bottom face, top face, vertical edges
+    edges = np.array([
+        # Bottom face
+        v[0], v[1], v[1], v[2], v[2], v[3], v[3], v[0],
+        # Top face
+        v[4], v[5], v[5], v[6], v[6], v[7], v[7], v[4],
+        # Vertical edges
+        v[0], v[4], v[1], v[5], v[2], v[6], v[3], v[7],
+    ], dtype=float)
+
+    return edges
+
+
+# Label to color mapping for transparent objects with wireframe
+LABEL_COLORS = {
+    "car": (0.7, 0.7, 0.7, 0.15),       # Light gray, very transparent
+    "truck": (0.9, 0.9, 0.9, 0.15),     # White-ish, very transparent  
+    "twowheeler": (1.0, 0.85, 0.4, 0.15),  # Yellow, very transparent
+    "bicycle": (0.4, 1.0, 0.4, 0.15),   # Green, very transparent
+    "pedestrian": (1.0, 0.4, 1.0, 0.15),  # Magenta, very transparent
+}
+
+LABEL_EDGE_COLORS = {
+    "car": (0.8, 0.8, 0.8, 0.8),       # Light gray edges
+    "truck": (1.0, 1.0, 1.0, 0.9),     # White edges
+    "twowheeler": (1.0, 0.9, 0.5, 0.9),  # Yellow edges
+    "bicycle": (0.5, 1.0, 0.5, 0.9),   # Green edges
+    "pedestrian": (1.0, 0.5, 1.0, 0.9),  # Magenta edges
+}
+
+
 def set_item_pose(item: gl.GLGraphicsItem, pos_xyz: np.ndarray, yaw_rad: float):
     from PyQt5 import QtGui
     m = QtGui.QMatrix4x4()
@@ -355,9 +403,12 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
             # Use pr_eff if present.
             pr = o.get("pr_eff_dbm", None)
             pr_txt = "-" if pr is None else f"{pr:.1f}"
+            
+            # Detection count for this object
+            det_count = o.get("detection_count", 0)
 
             # If you want exact speed, I can add vel into frame["objects"] in radar_engine.py.
-            lines.append(f"PID {o['participant_id']} {o['label']}  R={rng:.1f}m  az={az:.1f}°  PrEff={pr_txt} dBm")
+            lines.append(f"PID {o['participant_id']} {o['label']}  R={rng:.1f}m  az={az:.1f}°  dets={det_count}  PrEff={pr_txt} dBm")
 
         self.hud.setText("\n".join(lines))
         # place HUD at top-left of current view
