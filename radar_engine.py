@@ -170,8 +170,11 @@ class SimEngine:
         # --- target sigma defaults (m^2) ---
         # These are "total sigma" (distributed across corners).
         self.defaults = {
-            "car":   {"L": 4.5, "W": 1.9, "H": 1.6, "sigma_m2": 10.0},
-            "truck": {"L": 10.0, "W": 2.6, "H": 3.5, "sigma_m2": 30.0},
+            "car":       {"L": 4.5, "W": 1.9, "H": 1.6, "sigma_m2": 10.0},
+            "truck":     {"L": 10.0, "W": 2.6, "H": 3.5, "sigma_m2": 30.0},
+            "twowheeler": {"L": 2.2, "W": 0.8, "H": 1.5, "sigma_m2": 3.0},   # motorcycle/scooter
+            "bicycle":   {"L": 1.8, "W": 0.6, "H": 1.7, "sigma_m2": 1.0},   # bicycle with rider
+            "pedestrian": {"L": 0.5, "W": 0.5, "H": 1.75, "sigma_m2": 0.5}, # walking person
         }
 
         # --- radar equation calibration ---
@@ -443,9 +446,24 @@ class SimEngine:
         if len(self.participants) >= self.random_max_in_scene:
             return
         if float(self.rng.random()) < 0.15:
-            label = "truck" if float(self.rng.random()) < 0.35 else "car"
+            # Random label selection with weighted probabilities
+            rand_val = float(self.rng.random())
+            if rand_val < 0.30:
+                label = "car"
+                speed = float(self.rng.uniform(8.0, 18.0))
+            elif rand_val < 0.50:
+                label = "truck"
+                speed = float(self.rng.uniform(6.0, 14.0))
+            elif rand_val < 0.70:
+                label = "twowheeler"
+                speed = float(self.rng.uniform(6.0, 16.0))
+            elif rand_val < 0.85:
+                label = "bicycle"
+                speed = float(self.rng.uniform(3.0, 8.0))
+            else:
+                label = "pedestrian"
+                speed = float(self.rng.uniform(1.0, 2.0))
             direction = "incoming" if float(self.rng.random()) < 0.5 else "outgoing"
-            speed = float(self.rng.uniform(6.0, 18.0))
 
             d = self.defaults[label]
             L_new = float(d["L"])
