@@ -351,8 +351,8 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.setSpacing(4)
 
         # Title
-        title = QtWidgets.QLabel("Detection Classification")
-        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #2196F3;")
+        title = QtWidgets.QLabel("Object Classification")
+        title.setStyleSheet("font-weight: bold; font-size: 14px;")
         layout.addWidget(title)
 
         # --- DBSCAN Clustering Controls ---
