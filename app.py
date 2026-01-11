@@ -20,6 +20,7 @@ from ui_components import (
     LABEL_COLORS,
     LABEL_EDGE_COLORS,
 )
+from classification import ClassificationPipeline
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -45,6 +46,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bird = BirdsEyeWindow()
         self.bird_visible = False
 
+        # Classification pipeline
+        self.classification_pipeline = ClassificationPipeline(
+            eps=2.0,
+            min_samples=2,
+            classifier_type='rule_based'
+        )
+
         # --- layout ---
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
@@ -52,13 +60,19 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
+        # Left panel - control tabs
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setTabPosition(QtWidgets.QTabWidget.West)
         self.tabs.setMinimumWidth(470)
         layout.addWidget(self.tabs, 0)
 
+        # Center - 3D view
         self.view3d = gl.GLViewWidget()
         layout.addWidget(self.view3d, 1)
+
+        # Right panel - Classification
+        self.right_panel = self._build_classification_panel()
+        layout.addWidget(self.right_panel, 0)
 
         self._build_toolbar()
         self._build_tabs()
@@ -326,6 +340,313 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.tabs.addTab(w, "View")
 
+    # ---------------- Classification Panel (Right Side) ----------------
+    def _build_classification_panel(self) -> QtWidgets.QWidget:
+        """Build the right-side classification panel."""
+        panel = QtWidgets.QWidget()
+        panel.setMinimumWidth(420)
+        panel.setMaximumWidth(480)
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        # Title
+        title = QtWidgets.QLabel("Detection Classification")
+        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #2196F3;")
+        layout.addWidget(title)
+
+        # --- DBSCAN Clustering Controls ---
+        dbscan_box = QtWidgets.QGroupBox("1. DBSCAN Clustering")
+        dbscan_layout = QtWidgets.QFormLayout(dbscan_box)
+
+        self.dbscan_eps = QtWidgets.QDoubleSpinBox()
+        self.dbscan_eps.setRange(0.5, 10.0)
+        self.dbscan_eps.setValue(2.0)
+        self.dbscan_eps.setSingleStep(0.5)
+        self.dbscan_eps.setDecimals(1)
+        self.dbscan_eps.setSuffix(" m")
+        self.dbscan_eps.valueChanged.connect(self.on_dbscan_params_changed)
+
+        self.dbscan_min_samples = QtWidgets.QSpinBox()
+        self.dbscan_min_samples.setRange(1, 10)
+        self.dbscan_min_samples.setValue(2)
+        self.dbscan_min_samples.valueChanged.connect(self.on_dbscan_params_changed)
+
+        self.show_clusters = QtWidgets.QCheckBox("Show cluster boundaries")
+        self.show_clusters.setChecked(True)
+
+        self.show_centroids = QtWidgets.QCheckBox("Show cluster centroids")
+        self.show_centroids.setChecked(True)
+
+        dbscan_layout.addRow("Epsilon (ε):", self.dbscan_eps)
+        dbscan_layout.addRow("Min Samples:", self.dbscan_min_samples)
+        dbscan_layout.addRow(self.show_clusters)
+        dbscan_layout.addRow(self.show_centroids)
+
+        # Cluster stats display
+        self.cluster_stats_label = QtWidgets.QLabel("Clusters: 0 | Noise: 0")
+        dbscan_layout.addRow(self.cluster_stats_label)
+
+        layout.addWidget(dbscan_box)
+
+        # --- Tracking Controls ---
+        tracking_box = QtWidgets.QGroupBox("2. Continuous Tracking")
+        tracking_layout = QtWidgets.QFormLayout(tracking_box)
+
+        self.tracking_enabled = QtWidgets.QCheckBox("Enable tracking")
+        self.tracking_enabled.setChecked(True)
+
+        self.show_track_ids = QtWidgets.QCheckBox("Show track IDs")
+        self.show_track_ids.setChecked(True)
+
+        self.show_track_trails = QtWidgets.QCheckBox("Show velocity vectors")
+        self.show_track_trails.setChecked(True)
+
+        tracking_layout.addRow(self.tracking_enabled)
+        tracking_layout.addRow(self.show_track_ids)
+        tracking_layout.addRow(self.show_track_trails)
+
+        # Track stats display
+        self.track_stats_label = QtWidgets.QLabel("Active Tracks: 0")
+        tracking_layout.addRow(self.track_stats_label)
+
+        layout.addWidget(tracking_box)
+
+        # --- Classification Controls ---
+        class_box = QtWidgets.QGroupBox("3. Classification")
+        class_layout = QtWidgets.QVBoxLayout(class_box)
+
+        # Classifier selection
+        classifier_select_layout = QtWidgets.QHBoxLayout()
+        classifier_select_layout.addWidget(QtWidgets.QLabel("Model:"))
+
+        self.classifier_combo = QtWidgets.QComboBox()
+        self.classifier_combo.addItems(["Rule-Based", "Naive Bayes"])
+        self.classifier_combo.currentIndexChanged.connect(self.on_classifier_changed)
+        classifier_select_layout.addWidget(self.classifier_combo)
+        classifier_select_layout.addStretch()
+
+        class_layout.addLayout(classifier_select_layout)
+
+        # Show confidence
+        self.show_confidence = QtWidgets.QCheckBox("Show confidence scores")
+        self.show_confidence.setChecked(True)
+        class_layout.addWidget(self.show_confidence)
+
+        # Classification results table
+        self.class_table = QtWidgets.QTableWidget(0, 6)
+        self.class_table.setHorizontalHeaderLabels([
+            "Track", "Class", "Conf%", "Speed", "Points", "Age"
+        ])
+        self.class_table.horizontalHeader().setStretchLastSection(True)
+        self.class_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.class_table.setMaximumHeight(200)
+        self.class_table.setAlternatingRowColors(True)
+        class_layout.addWidget(self.class_table)
+
+        layout.addWidget(class_box)
+
+        # --- Classification Details ---
+        details_box = QtWidgets.QGroupBox("Classification Details")
+        details_layout = QtWidgets.QVBoxLayout(details_box)
+
+        self.class_details_text = QtWidgets.QTextEdit()
+        self.class_details_text.setReadOnly(True)
+        self.class_details_text.setMaximumHeight(180)
+        self.class_details_text.setStyleSheet("font-family: monospace; font-size: 11px;")
+        details_layout.addWidget(self.class_details_text)
+
+        layout.addWidget(details_box)
+
+        # --- Model Comparison ---
+        compare_box = QtWidgets.QGroupBox("Model Comparison")
+        compare_layout = QtWidgets.QFormLayout(compare_box)
+
+        self.rule_accuracy_label = QtWidgets.QLabel("Rule-Based: -")
+        self.bayes_accuracy_label = QtWidgets.QLabel("Naive Bayes: -")
+
+        compare_layout.addRow(self.rule_accuracy_label)
+        compare_layout.addRow(self.bayes_accuracy_label)
+
+        layout.addWidget(compare_box)
+
+        # Reset button
+        reset_btn = QtWidgets.QPushButton("Reset Classification Pipeline")
+        reset_btn.clicked.connect(self.reset_classification)
+        layout.addWidget(reset_btn)
+
+        layout.addStretch(1)
+        return panel
+
+    def on_dbscan_params_changed(self):
+        """Update DBSCAN parameters."""
+        eps = float(self.dbscan_eps.value())
+        min_samples = int(self.dbscan_min_samples.value())
+        self.classification_pipeline.set_dbscan_params(eps, min_samples)
+
+    def on_classifier_changed(self):
+        """Switch classifier type."""
+        idx = self.classifier_combo.currentIndex()
+        if idx == 0:
+            self.classification_pipeline.set_classifier('rule_based')
+        else:
+            self.classification_pipeline.set_classifier('naive_bayes')
+
+    def reset_classification(self):
+        """Reset the classification pipeline."""
+        self.classification_pipeline.reset()
+        self.class_table.setRowCount(0)
+        self.class_details_text.clear()
+        self.cluster_stats_label.setText("Clusters: 0 | Noise: 0")
+        self.track_stats_label.setText("Active Tracks: 0")
+
+    def update_classification_ui(self, class_results: dict, objects: list):
+        """Update the classification panel UI with results."""
+        if class_results is None:
+            return
+
+        # Update cluster stats
+        self.cluster_stats_label.setText(
+            f"Clusters: {class_results['num_clusters']} | Noise: {class_results['num_noise']}"
+        )
+
+        # Update track stats
+        self.track_stats_label.setText(f"Active Tracks: {class_results['num_tracks']}")
+
+        # Update classification table
+        classifications = class_results.get('classifications', [])
+        self.class_table.setRowCount(len(classifications))
+
+        # Track class colors for visualization
+        class_colors = {
+            'car': '#B0B0B0',
+            'truck': '#FFFFFF',
+            'twowheeler': '#FFD700',
+            'bicycle': '#00FF00',
+            'pedestrian': '#FF00FF',
+            'clutter': '#808080',
+            'unknown': '#555555'
+        }
+
+        for row, c in enumerate(classifications):
+            track_id = c['track_id']
+            pred_class = c['final_class']
+            confidence = c['final_confidence'] * 100
+            speed = c['features'].get('speed', 0.0)
+            num_points = c['features'].get('num_points', 0)
+            age = c['track_age']
+
+            # Track ID
+            item = QtWidgets.QTableWidgetItem(f"T{track_id}")
+            item.setFlags(item.flags() ^ QtCore.Qt.ItemIsEditable)
+            self.class_table.setItem(row, 0, item)
+
+            # Class with color
+            item = QtWidgets.QTableWidgetItem(pred_class)
+            item.setFlags(item.flags() ^ QtCore.Qt.ItemIsEditable)
+            color = class_colors.get(pred_class, '#555555')
+            item.setForeground(QtGui.QColor(color))
+            self.class_table.setItem(row, 1, item)
+
+            # Confidence
+            item = QtWidgets.QTableWidgetItem(f"{confidence:.1f}")
+            item.setFlags(item.flags() ^ QtCore.Qt.ItemIsEditable)
+            if confidence >= 70:
+                item.setForeground(QtGui.QColor('#00FF00'))
+            elif confidence >= 40:
+                item.setForeground(QtGui.QColor('#FFFF00'))
+            else:
+                item.setForeground(QtGui.QColor('#FF6666'))
+            self.class_table.setItem(row, 2, item)
+
+            # Speed
+            item = QtWidgets.QTableWidgetItem(f"{speed:.1f}")
+            item.setFlags(item.flags() ^ QtCore.Qt.ItemIsEditable)
+            self.class_table.setItem(row, 3, item)
+
+            # Points
+            item = QtWidgets.QTableWidgetItem(f"{int(num_points)}")
+            item.setFlags(item.flags() ^ QtCore.Qt.ItemIsEditable)
+            self.class_table.setItem(row, 4, item)
+
+            # Age
+            item = QtWidgets.QTableWidgetItem(f"{age}")
+            item.setFlags(item.flags() ^ QtCore.Qt.ItemIsEditable)
+            self.class_table.setItem(row, 5, item)
+
+        self.class_table.resizeColumnsToContents()
+
+        # Update details text
+        self._update_classification_details(classifications, objects)
+
+    def _update_classification_details(self, classifications: list, objects: list):
+        """Update the detailed classification text view."""
+        lines = []
+
+        # Build object lookup by position proximity
+        def find_matching_object(pos):
+            for o in objects:
+                ox, oy = o['pos'][0], o['pos'][1]
+                if abs(ox - pos[0]) < 3.0 and abs(oy - pos[1]) < 3.0:
+                    return o
+            return None
+
+        for c in classifications:
+            track_id = c['track_id']
+            lines.append(f"═══ Track T{track_id} ═══")
+
+            # Features
+            feat = c['features']
+            lines.append(f"  Points: {int(feat.get('num_points', 0))}")
+            lines.append(f"  Extent: {feat.get('extent_x', 0):.2f}m × {feat.get('extent_y', 0):.2f}m")
+            lines.append(f"  RCS: {feat.get('mean_rcs', 0):.1f} ± {feat.get('std_rcs', 0):.1f} dBm")
+            lines.append(f"  Speed: {feat.get('speed', 0):.2f} m/s")
+
+            # Rule-based results
+            rb = c['rule_based']
+            lines.append(f"  Rule-Based: {rb['class']} ({rb['confidence']*100:.1f}%)")
+
+            # Naive Bayes results
+            nb = c['naive_bayes']
+            lines.append(f"  Naive Bayes: {nb['class']} ({nb['confidence']*100:.1f}%)")
+
+            # Final result
+            lines.append(f"  → FINAL: {c['final_class'].upper()} ({c['final_confidence']*100:.1f}%)")
+
+            # Ground truth comparison (if available)
+            match_obj = find_matching_object(c['position'])
+            if match_obj:
+                gt_label = match_obj['label']
+                is_correct = (c['final_class'] == gt_label)
+                status = "✓" if is_correct else "✗"
+                lines.append(f"  Ground Truth: {gt_label} {status}")
+
+            lines.append("")
+
+        # Model comparison summary
+        if classifications:
+            rule_correct = 0
+            bayes_correct = 0
+            total = 0
+
+            for c in classifications:
+                match_obj = find_matching_object(c['position'])
+                if match_obj:
+                    total += 1
+                    gt = match_obj['label']
+                    if c['rule_based']['class'] == gt:
+                        rule_correct += 1
+                    if c['naive_bayes']['class'] == gt:
+                        bayes_correct += 1
+
+            if total > 0:
+                rule_acc = (rule_correct / total) * 100
+                bayes_acc = (bayes_correct / total) * 100
+                self.rule_accuracy_label.setText(f"Rule-Based: {rule_correct}/{total} ({rule_acc:.0f}%)")
+                self.bayes_accuracy_label.setText(f"Naive Bayes: {bayes_correct}/{total} ({bayes_acc:.0f}%)")
+
+        self.class_details_text.setText("\n".join(lines))
+
     # ---------------- Scene init ----------------
     def _init_scene(self):
         self.view3d.setBackgroundColor((0, 0, 0))
@@ -348,6 +669,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.det_scatter = gl.GLScatterPlotItem(pos=np.zeros((0, 3)), size=5.5)
         self.view3d.addItem(self.det_scatter)
+
+        # Classification visualization items
+        self.cluster_boundaries = {}  # cluster_id -> line item
+        self.centroid_scatter = gl.GLScatterPlotItem(pos=np.zeros((0, 3)), size=12, color=(1, 1, 0, 1))
+        self.view3d.addItem(self.centroid_scatter)
+
+        self.track_labels = {}  # track_id -> text item (we'll use line items as markers)
+        self.velocity_vectors = {}  # track_id -> line item
 
     def draw_road_and_lanes(self):
         for it in self.road_lines + self.lane_lines:
@@ -681,12 +1010,19 @@ class MainWindow(QtWidgets.QMainWindow):
         # update table effective power display
         self.update_pr_eff_column(frame["objects"])
 
-        self.update_3d(frame)
+        # Run classification pipeline
+        if self.tracking_enabled.isChecked():
+            class_results = self.classification_pipeline.process_frame(dets, frame["t_s"])
+            self.update_classification_ui(class_results, frame["objects"])
+        else:
+            class_results = None
+
+        self.update_3d(frame, class_results)
 
         if self.bird_visible:
             self.bird.update_view(frame, show_bbox=self.show_bbox.isChecked(), show_dets=self.show_dets.isChecked())
 
-    def update_3d(self, frame: dict):
+    def update_3d(self, frame: dict, class_results: dict = None):
         # FOV visibility toggle
         if self.fov_mesh is not None:
             self.fov_mesh.setVisible(self.show_fov.isChecked())
@@ -784,6 +1120,130 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.view3d.addItem(it)
             else:
                 self.bbox_items[pid].setData(pos=poly)
+
+        # Classification visualization
+        self._update_classification_visuals(class_results)
+
+    def _update_classification_visuals(self, class_results: dict):
+        """Update 3D visualization of clusters and tracks."""
+        if class_results is None:
+            # Hide all classification visuals
+            self.centroid_scatter.setData(pos=np.zeros((0, 3)))
+            for cid in list(self.cluster_boundaries.keys()):
+                self.view3d.removeItem(self.cluster_boundaries[cid])
+            self.cluster_boundaries.clear()
+            for tid in list(self.velocity_vectors.keys()):
+                self.view3d.removeItem(self.velocity_vectors[tid])
+            self.velocity_vectors.clear()
+            return
+
+        # Class colors for visualization
+        class_colors = {
+            'car': (0.7, 0.7, 0.7, 1.0),
+            'truck': (1.0, 1.0, 1.0, 1.0),
+            'twowheeler': (1.0, 0.85, 0.0, 1.0),
+            'bicycle': (0.0, 1.0, 0.0, 1.0),
+            'pedestrian': (1.0, 0.0, 1.0, 1.0),
+            'clutter': (0.5, 0.5, 0.5, 1.0),
+            'unknown': (0.3, 0.3, 0.3, 1.0)
+        }
+
+        tracks = class_results.get('tracks', [])
+        clusters = class_results.get('clusters', [])
+
+        # Update cluster boundaries
+        current_cluster_ids = set()
+        if self.show_clusters.isChecked():
+            for cluster in clusters:
+                cid = cluster.cluster_id
+                current_cluster_ids.add(cid)
+
+                # Create boundary polygon from cluster detections
+                if cluster.detections:
+                    xs = [d.x_w for d in cluster.detections]
+                    ys = [d.y_w for d in cluster.detections]
+
+                    # Create convex hull-like boundary (simple approach: rectangle)
+                    xmin, xmax = min(xs), max(xs)
+                    ymin, ymax = min(ys), max(ys)
+                    z = 0.6
+
+                    # Add small padding
+                    pad = 0.3
+                    pts = np.array([
+                        [xmin - pad, ymin - pad, z],
+                        [xmax + pad, ymin - pad, z],
+                        [xmax + pad, ymax + pad, z],
+                        [xmin - pad, ymax + pad, z],
+                        [xmin - pad, ymin - pad, z],
+                    ], dtype=float)
+
+                    if cid not in self.cluster_boundaries:
+                        line = gl.GLLinePlotItem(pos=pts, width=2, antialias=True, color=(0.2, 0.8, 1.0, 0.7))
+                        self.cluster_boundaries[cid] = line
+                        self.view3d.addItem(line)
+                    else:
+                        self.cluster_boundaries[cid].setData(pos=pts)
+
+        # Remove old cluster boundaries
+        for cid in list(self.cluster_boundaries.keys()):
+            if cid not in current_cluster_ids:
+                self.view3d.removeItem(self.cluster_boundaries[cid])
+                del self.cluster_boundaries[cid]
+
+        # Update centroids
+        if self.show_centroids.isChecked() and tracks:
+            centroid_pts = []
+            centroid_colors = []
+            for track in tracks:
+                pos = track.pos
+                centroid_pts.append([pos[0], pos[1], 0.8])
+                color = class_colors.get(track.predicted_class, (0.5, 0.5, 0.5, 1.0))
+                centroid_colors.append(color)
+
+            centroid_pts = np.array(centroid_pts, dtype=float)
+            centroid_colors = np.array(centroid_colors, dtype=float)
+            self.centroid_scatter.setData(pos=centroid_pts, size=14, color=centroid_colors)
+        else:
+            self.centroid_scatter.setData(pos=np.zeros((0, 3)))
+
+        # Update velocity vectors
+        current_track_ids = set()
+        if self.show_track_trails.isChecked():
+            for track in tracks:
+                tid = track.track_id
+                current_track_ids.add(tid)
+
+                pos = track.pos
+                vel = track.vel
+                speed = float(np.linalg.norm(vel))
+
+                if speed > 0.5:  # Only show if moving
+                    # Scale velocity for visualization
+                    scale = 0.5
+                    vel_pts = np.array([
+                        [pos[0], pos[1], 0.9],
+                        [pos[0] + vel[0] * scale, pos[1] + vel[1] * scale, 0.9]
+                    ], dtype=float)
+
+                    color = class_colors.get(track.predicted_class, (0.5, 0.5, 0.5, 1.0))
+
+                    if tid not in self.velocity_vectors:
+                        line = gl.GLLinePlotItem(pos=vel_pts, width=3, antialias=True, color=color)
+                        self.velocity_vectors[tid] = line
+                        self.view3d.addItem(line)
+                    else:
+                        self.velocity_vectors[tid].setData(pos=vel_pts, color=color)
+                else:
+                    if tid in self.velocity_vectors:
+                        self.view3d.removeItem(self.velocity_vectors[tid])
+                        del self.velocity_vectors[tid]
+
+        # Remove old velocity vectors
+        for tid in list(self.velocity_vectors.keys()):
+            if tid not in current_track_ids:
+                self.view3d.removeItem(self.velocity_vectors[tid])
+                del self.velocity_vectors[tid]
 
     def closeEvent(self, event):
         try:
