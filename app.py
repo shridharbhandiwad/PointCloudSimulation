@@ -675,8 +675,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.centroid_scatter = gl.GLScatterPlotItem(pos=np.zeros((0, 3)), size=12, color=(1, 1, 0, 1))
         self.view3d.addItem(self.centroid_scatter)
 
-        self.track_labels = {}  # track_id -> text item (we'll use line items as markers)
+        self.track_labels = {}  # track_id -> GLTextItem for classification labels
         self.velocity_vectors = {}  # track_id -> line item
+        
+        # Check if GLTextItem is available (pyqtgraph >= 0.13)
+        self._has_gl_text = hasattr(gl, 'GLTextItem')
 
     def draw_road_and_lanes(self):
         for it in self.road_lines + self.lane_lines:
@@ -1125,7 +1128,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_classification_visuals(class_results)
 
     def _update_classification_visuals(self, class_results: dict):
-        """Update 3D visualization of clusters and tracks."""
+        """Update 3D visualization of clusters, tracks, and classification labels."""
         if class_results is None:
             # Hide all classification visuals
             self.centroid_scatter.setData(pos=np.zeros((0, 3)))
@@ -1135,6 +1138,9 @@ class MainWindow(QtWidgets.QMainWindow):
             for tid in list(self.velocity_vectors.keys()):
                 self.view3d.removeItem(self.velocity_vectors[tid])
             self.velocity_vectors.clear()
+            for tid in list(self.track_labels.keys()):
+                self.view3d.removeItem(self.track_labels[tid])
+            self.track_labels.clear()
             return
 
         # Class colors for visualization
@@ -1150,6 +1156,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         tracks = class_results.get('tracks', [])
         clusters = class_results.get('clusters', [])
+        classifications = class_results.get('classifications', [])
+
+        # Build lookup for classification by track_id
+        class_by_track = {}
+        for c in classifications:
+            class_by_track[c['track_id']] = c
 
         # Update cluster boundaries
         current_cluster_ids = set()
@@ -1207,17 +1219,19 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.centroid_scatter.setData(pos=np.zeros((0, 3)))
 
-        # Update velocity vectors
+        # Update velocity vectors and track labels
         current_track_ids = set()
-        if self.show_track_trails.isChecked():
-            for track in tracks:
-                tid = track.track_id
-                current_track_ids.add(tid)
+        for track in tracks:
+            tid = track.track_id
+            current_track_ids.add(tid)
 
-                pos = track.pos
-                vel = track.vel
-                speed = float(np.linalg.norm(vel))
+            pos = track.pos
+            vel = track.vel
+            speed = float(np.linalg.norm(vel))
+            color = class_colors.get(track.predicted_class, (0.5, 0.5, 0.5, 1.0))
 
+            # Velocity vectors
+            if self.show_track_trails.isChecked():
                 if speed > 0.5:  # Only show if moving
                     # Scale velocity for visualization
                     scale = 0.5
@@ -1225,8 +1239,6 @@ class MainWindow(QtWidgets.QMainWindow):
                         [pos[0], pos[1], 0.9],
                         [pos[0] + vel[0] * scale, pos[1] + vel[1] * scale, 0.9]
                     ], dtype=float)
-
-                    color = class_colors.get(track.predicted_class, (0.5, 0.5, 0.5, 1.0))
 
                     if tid not in self.velocity_vectors:
                         line = gl.GLLinePlotItem(pos=vel_pts, width=3, antialias=True, color=color)
@@ -1239,11 +1251,67 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.view3d.removeItem(self.velocity_vectors[tid])
                         del self.velocity_vectors[tid]
 
+            # Classification labels in 3D view
+            if self.show_track_ids.isChecked():
+                # Get classification info for this track
+                class_info = class_by_track.get(tid)
+                if class_info:
+                    pred_class = class_info['final_class']
+                    confidence = class_info['final_confidence'] * 100
+                    label_text = f"{pred_class.upper()} {confidence:.0f}%"
+                else:
+                    pred_class = track.predicted_class
+                    label_text = f"T{tid}"
+
+                # Position label above the object
+                label_pos = (float(pos[0]), float(pos[1]), 2.5)
+                
+                # Convert color to QColor format for GLTextItem
+                qcolor = QtGui.QColor(
+                    int(color[0] * 255),
+                    int(color[1] * 255),
+                    int(color[2] * 255)
+                )
+
+                if self._has_gl_text:
+                    # Use GLTextItem if available (pyqtgraph >= 0.13)
+                    if tid not in self.track_labels:
+                        text_item = gl.GLTextItem(
+                            pos=label_pos,
+                            text=label_text,
+                            color=qcolor,
+                            font=QtGui.QFont('Arial', 10, QtGui.QFont.Bold)
+                        )
+                        self.track_labels[tid] = text_item
+                        self.view3d.addItem(text_item)
+                    else:
+                        self.track_labels[tid].setData(pos=label_pos, text=label_text, color=qcolor)
+                else:
+                    # Fallback: Use vertical line markers with colored tips for older pyqtgraph
+                    # This creates a "flag" marker pointing up from the object
+                    marker_pts = np.array([
+                        [pos[0], pos[1], 1.8],
+                        [pos[0], pos[1], 3.0],
+                    ], dtype=float)
+                    
+                    if tid not in self.track_labels:
+                        line = gl.GLLinePlotItem(pos=marker_pts, width=4, antialias=True, color=color)
+                        self.track_labels[tid] = line
+                        self.view3d.addItem(line)
+                    else:
+                        self.track_labels[tid].setData(pos=marker_pts, color=color)
+
         # Remove old velocity vectors
         for tid in list(self.velocity_vectors.keys()):
             if tid not in current_track_ids:
                 self.view3d.removeItem(self.velocity_vectors[tid])
                 del self.velocity_vectors[tid]
+
+        # Remove old track labels
+        for tid in list(self.track_labels.keys()):
+            if tid not in current_track_ids or not self.show_track_ids.isChecked():
+                self.view3d.removeItem(self.track_labels[tid])
+                del self.track_labels[tid]
 
     def closeEvent(self, event):
         try:
