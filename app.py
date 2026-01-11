@@ -1020,7 +1020,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_3d(frame, class_results)
 
         if self.bird_visible:
-            self.bird.update_view(frame, show_bbox=self.show_bbox.isChecked(), show_dets=self.show_dets.isChecked())
+            self.bird.update_view(frame, show_bbox=self.show_bbox.isChecked(), show_dets=self.show_dets.isChecked(), class_results=class_results)
 
     def update_3d(self, frame: dict, class_results: dict = None):
         # FOV visibility toggle

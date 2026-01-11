@@ -10,7 +10,7 @@ Created on Wed Jan  7 18:16:56 2026
 
 from __future__ import annotations
 import numpy as np
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtWidgets, QtGui
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import math
@@ -238,6 +238,7 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
         self.det_scatter = pg.ScatterPlotItem(size=6)
 
         self.bbox_curves = {}
+        self.bbox_labels = {}  # pid -> TextItem for object type + confidence
 
         self.plot.addItem(self.road_item)
         self.plot.addItem(self.veh_scatter)
@@ -277,7 +278,7 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
         self.plot.setXRange(x_min, x_max, padding=0.0)
         self.plot.setYRange(y_min, y_max, padding=0.0)
 
-    def update_view(self, frame: dict, show_bbox: bool, show_dets: bool):
+    def update_view(self, frame: dict, show_bbox: bool, show_dets: bool, class_results: dict = None):
         radar = frame["radar"]
         world = frame["world"]
         objects = frame["objects"]
@@ -353,6 +354,29 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
             if pid not in existing_pids:
                 self.plot.removeItem(self.bbox_curves[pid])
                 del self.bbox_curves[pid]
+        for pid in list(self.bbox_labels.keys()):
+            if pid not in existing_pids:
+                self.plot.removeItem(self.bbox_labels[pid])
+                del self.bbox_labels[pid]
+
+        # Build lookup for classification confidence by position
+        classification_lookup = {}
+        if class_results is not None:
+            for c in class_results.get('classifications', []):
+                pos = c['position']
+                classification_lookup[tuple(pos)] = {
+                    'class': c['final_class'],
+                    'confidence': c['final_confidence']
+                }
+
+        # Label colors for text
+        label_text_colors = {
+            "car": (200, 200, 200),
+            "truck": (255, 255, 255),
+            "twowheeler": (255, 220, 100),
+            "bicycle": (100, 255, 100),
+            "pedestrian": (255, 100, 255),
+        }
 
         if show_bbox:
             for o in objects:
@@ -364,6 +388,9 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
                     if pid in self.bbox_curves:
                         self.plot.removeItem(self.bbox_curves[pid])
                         del self.bbox_curves[pid]
+                    if pid in self.bbox_labels:
+                        self.plot.removeItem(self.bbox_labels[pid])
+                        del self.bbox_labels[pid]
                     continue
                 poly = bbox_polyline_world(bbox)
                 if poly is None:
@@ -374,6 +401,49 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
                     self.bbox_curves[pid] = cur
                 # poly[:,1]=worldY => plotX ; poly[:,0]=worldX => plotY
                 self.bbox_curves[pid].setData(poly[:, 1], poly[:, 0])
+
+                # --- Add label text on bounding box ---
+                obj_pos = o["pos"]
+                obj_label = o["label"]
+                
+                # Try to find classification confidence for this object
+                confidence = None
+                classified_type = obj_label  # default to ground truth label
+                for class_pos, class_info in classification_lookup.items():
+                    # Match by position proximity
+                    if abs(class_pos[0] - obj_pos[0]) < 3.0 and abs(class_pos[1] - obj_pos[1]) < 3.0:
+                        classified_type = class_info['class']
+                        confidence = class_info['confidence']
+                        break
+                
+                # Format label text: "TYPE Conf%"
+                if confidence is not None:
+                    label_text = f"{classified_type.upper()} {confidence*100:.0f}%"
+                else:
+                    label_text = f"{obj_label.upper()}"
+                
+                # Position at top of bounding box
+                # BEV: plotX = worldY, plotY = worldX
+                label_x = (bbox["ymin"] + bbox["ymax"]) / 2.0  # center in Y (lateral)
+                label_y = bbox["xmax"] + 0.5  # top of bbox in X (forward) + small offset
+                
+                text_color = label_text_colors.get(obj_label, (200, 200, 200))
+                
+                if pid not in self.bbox_labels:
+                    txt = pg.TextItem(text=label_text, color=text_color, anchor=(0.5, 1.0))
+                    txt.setFont(QtGui.QFont("Arial", 9, QtGui.QFont.Bold))
+                    self.plot.addItem(txt)
+                    self.bbox_labels[pid] = txt
+                else:
+                    self.bbox_labels[pid].setText(label_text)
+                    self.bbox_labels[pid].setColor(text_color)
+                
+                self.bbox_labels[pid].setPos(label_x, label_y)
+        else:
+            # Hide all bbox labels when bbox display is off
+            for pid in list(self.bbox_labels.keys()):
+                self.plot.removeItem(self.bbox_labels[pid])
+            self.bbox_labels.clear()
 
         # --- HUD metrics ---
         radar_pos = radar["pos"]
