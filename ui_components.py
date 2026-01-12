@@ -278,7 +278,7 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
         self.plot.setXRange(x_min, x_max, padding=0.0)
         self.plot.setYRange(y_min, y_max, padding=0.0)
 
-    def update_view(self, frame: dict, show_bbox: bool, show_dets: bool, class_results: dict = None):
+    def update_view(self, frame: dict, show_bbox: bool, show_dets: bool, class_results: dict = None, show_classification: bool = True):
         radar = frame["radar"]
         world = frame["world"]
         objects = frame["objects"]
@@ -402,43 +402,49 @@ class BirdsEyeWindow(QtWidgets.QMainWindow):
                 # poly[:,1]=worldY => plotX ; poly[:,0]=worldX => plotY
                 self.bbox_curves[pid].setData(poly[:, 1], poly[:, 0])
 
-                # --- Add label text on bounding box ---
-                obj_pos = o["pos"]
-                obj_label = o["label"]
-                
-                # Try to find classification confidence for this object
-                confidence = None
-                classified_type = obj_label  # default to ground truth label
-                for class_pos, class_info in classification_lookup.items():
-                    # Match by position proximity
-                    if abs(class_pos[0] - obj_pos[0]) < 3.0 and abs(class_pos[1] - obj_pos[1]) < 3.0:
-                        classified_type = class_info['class']
-                        confidence = class_info['confidence']
-                        break
-                
-                # Format label text: "TYPE Conf%"
-                if confidence is not None:
-                    label_text = f"{classified_type.upper()} {confidence*100:.0f}%"
+                # --- Add label text on bounding box (only when show_classification is True) ---
+                if show_classification:
+                    obj_pos = o["pos"]
+                    obj_label = o["label"]
+                    
+                    # Try to find classification confidence for this object
+                    confidence = None
+                    classified_type = obj_label  # default to ground truth label
+                    for class_pos, class_info in classification_lookup.items():
+                        # Match by position proximity
+                        if abs(class_pos[0] - obj_pos[0]) < 3.0 and abs(class_pos[1] - obj_pos[1]) < 3.0:
+                            classified_type = class_info['class']
+                            confidence = class_info['confidence']
+                            break
+                    
+                    # Format label text: "TYPE Conf%"
+                    if confidence is not None:
+                        label_text = f"{classified_type.upper()} {confidence*100:.0f}%"
+                    else:
+                        label_text = f"{obj_label.upper()}"
+                    
+                    # Position at top of bounding box
+                    # BEV: plotX = worldY, plotY = worldX
+                    label_x = (bbox["ymin"] + bbox["ymax"]) / 2.0  # center in Y (lateral)
+                    label_y = bbox["xmax"] + 0.5  # top of bbox in X (forward) + small offset
+                    
+                    text_color = label_text_colors.get(obj_label, (200, 200, 200))
+                    
+                    if pid not in self.bbox_labels:
+                        txt = pg.TextItem(text=label_text, color=text_color, anchor=(0.5, 1.0))
+                        txt.setFont(QtGui.QFont("Arial", 9, QtGui.QFont.Bold))
+                        self.plot.addItem(txt)
+                        self.bbox_labels[pid] = txt
+                    else:
+                        self.bbox_labels[pid].setText(label_text)
+                        self.bbox_labels[pid].setColor(text_color)
+                    
+                    self.bbox_labels[pid].setPos(label_x, label_y)
                 else:
-                    label_text = f"{obj_label.upper()}"
-                
-                # Position at top of bounding box
-                # BEV: plotX = worldY, plotY = worldX
-                label_x = (bbox["ymin"] + bbox["ymax"]) / 2.0  # center in Y (lateral)
-                label_y = bbox["xmax"] + 0.5  # top of bbox in X (forward) + small offset
-                
-                text_color = label_text_colors.get(obj_label, (200, 200, 200))
-                
-                if pid not in self.bbox_labels:
-                    txt = pg.TextItem(text=label_text, color=text_color, anchor=(0.5, 1.0))
-                    txt.setFont(QtGui.QFont("Arial", 9, QtGui.QFont.Bold))
-                    self.plot.addItem(txt)
-                    self.bbox_labels[pid] = txt
-                else:
-                    self.bbox_labels[pid].setText(label_text)
-                    self.bbox_labels[pid].setColor(text_color)
-                
-                self.bbox_labels[pid].setPos(label_x, label_y)
+                    # Hide classification labels when show_classification is off
+                    if pid in self.bbox_labels:
+                        self.plot.removeItem(self.bbox_labels[pid])
+                        del self.bbox_labels[pid]
         else:
             # Hide all bbox labels when bbox display is off
             for pid in list(self.bbox_labels.keys()):
