@@ -332,10 +332,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_clutter = QtWidgets.QCheckBox("Show guardrail/clutter detections")
         self.show_clutter.setChecked(True)
 
+        self.show_classification_labels = QtWidgets.QCheckBox("Show classification & confidence")
+        self.show_classification_labels.setChecked(True)
+
         f.addRow(self.show_dets)
         f.addRow(self.show_bbox)
         f.addRow(self.show_fov)
         f.addRow(self.show_clutter)
+        f.addRow(self.show_classification_labels)
         f.addRow(self.lock_camera)
 
         self.tabs.addTab(w, "View")
@@ -1023,7 +1027,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_3d(frame, class_results)
 
         if self.bird_visible:
-            self.bird.update_view(frame, show_bbox=self.show_bbox.isChecked(), show_dets=self.show_dets.isChecked(), class_results=class_results)
+            self.bird.update_view(frame, show_bbox=self.show_bbox.isChecked(), show_dets=self.show_dets.isChecked(), class_results=class_results, show_classification=self.show_classification_labels.isChecked())
 
     def update_3d(self, frame: dict, class_results: dict = None):
         # FOV visibility toggle
@@ -1252,16 +1256,18 @@ class MainWindow(QtWidgets.QMainWindow):
                         del self.velocity_vectors[tid]
 
             # Classification labels in 3D view
-            if self.show_track_ids.isChecked():
+            if self.show_track_ids.isChecked() or self.show_classification_labels.isChecked():
                 # Get classification info for this track
                 class_info = class_by_track.get(tid)
-                if class_info:
+                if class_info and self.show_classification_labels.isChecked():
                     pred_class = class_info['final_class']
                     confidence = class_info['final_confidence'] * 100
                     label_text = f"{pred_class.upper()} {confidence:.0f}%"
-                else:
+                elif self.show_track_ids.isChecked():
                     pred_class = track.predicted_class
                     label_text = f"T{tid}"
+                else:
+                    continue  # Skip if only classification labels checkbox is on but no class info
 
                 # Position label above the object
                 label_pos = (float(pos[0]), float(pos[1]), 2.5)
@@ -1309,7 +1315,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Remove old track labels
         for tid in list(self.track_labels.keys()):
-            if tid not in current_track_ids or not self.show_track_ids.isChecked():
+            if tid not in current_track_ids or (not self.show_track_ids.isChecked() and not self.show_classification_labels.isChecked()):
                 self.view3d.removeItem(self.track_labels[tid])
                 del self.track_labels[tid]
 
