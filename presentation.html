@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Radar Simulation - Project Presentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #fafafa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .slide {
+            min-height: 100vh;
+            padding: 60px 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border-bottom: 1px solid #e0e0e0;
+            background: #fff;
+        }
+
+        .slide:nth-child(even) {
+            background: #f5f5f5;
+        }
+
+        .slide-title {
+            font-size: 2.8em;
+            font-weight: 300;
+            color: #1a1a1a;
+            margin-bottom: 40px;
+            border-bottom: 3px solid #333;
+            padding-bottom: 15px;
+        }
+
+        .slide-subtitle {
+            font-size: 1.4em;
+            color: #666;
+            margin-bottom: 30px;
+            font-weight: 400;
+        }
+
+        .content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h2 {
+            font-size: 1.8em;
+            font-weight: 400;
+            color: #333;
+            margin: 30px 0 15px 0;
+        }
+
+        h3 {
+            font-size: 1.4em;
+            font-weight: 500;
+            color: #444;
+            margin: 25px 0 12px 0;
+        }
+
+        p {
+            font-size: 1.15em;
+            margin-bottom: 15px;
+            color: #444;
+        }
+
+        ul {
+            margin: 15px 0 15px 30px;
+        }
+
+        li {
+            font-size: 1.1em;
+            margin-bottom: 12px;
+            color: #444;
+        }
+
+        .highlight-box {
+            background: #f8f8f8;
+            border-left: 4px solid #333;
+            padding: 20px 25px;
+            margin: 25px 0;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin: 30px 0;
+        }
+
+        .feature-card {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 25px;
+            border-radius: 4px;
+        }
+
+        .feature-card h4 {
+            font-size: 1.2em;
+            font-weight: 500;
+            color: #222;
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            font-size: 1em;
+            color: #555;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.95em;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+
+        .architecture-diagram {
+            background: #fff;
+            border: 1px solid #ccc;
+            padding: 30px;
+            margin: 25px 0;
+            text-align: center;
+        }
+
+        .diagram-box {
+            display: inline-block;
+            border: 2px solid #333;
+            padding: 15px 25px;
+            margin: 10px;
+            background: #f9f9f9;
+            font-weight: 500;
+        }
+
+        .diagram-arrow {
+            display: inline-block;
+            font-size: 1.5em;
+            margin: 0 10px;
+            color: #666;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            margin: 25px 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 1em;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px 15px;
+            text-align: left;
+        }
+
+        th {
+            background: #333;
+            color: #fff;
+            font-weight: 500;
+        }
+
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+
+        .title-slide {
+            text-align: center;
+            background: linear-gradient(135deg, #1a1a1a 0%, #333 100%);
+            color: #fff;
+        }
+
+        .title-slide .slide-title {
+            font-size: 3.5em;
+            color: #fff;
+            border-bottom: none;
+        }
+
+        .title-slide .slide-subtitle {
+            font-size: 1.6em;
+            color: #ccc;
+        }
+
+        .title-slide p {
+            color: #bbb;
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+
+        .nav-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #333;
+            padding: 10px 20px;
+            z-index: 1000;
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+        }
+
+        .nav-bar a {
+            color: #fff;
+            text-decoration: none;
+            padding: 5px 15px;
+            font-size: 0.9em;
+            white-space: nowrap;
+            border-radius: 3px;
+            transition: background 0.2s;
+        }
+
+        .nav-bar a:hover {
+            background: #555;
+        }
+
+        .slide:first-child {
+            padding-top: 100px;
+        }
+
+        .metric-box {
+            display: inline-block;
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 15px 25px;
+            margin: 10px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2em;
+            font-weight: 300;
+            color: #333;
+        }
+
+        .metric-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .flow-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 30px 0;
+        }
+
+        .flow-box {
+            background: #fff;
+            border: 2px solid #333;
+            padding: 20px;
+            min-width: 150px;
+            text-align: center;
+        }
+
+        .flow-arrow {
+            font-size: 2em;
+            color: #333;
+        }
+
+        @media print {
+            .slide {
+                page-break-after: always;
+                min-height: auto;
+                padding: 40px;
+            }
+            .nav-bar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="nav-bar">
+    <a href="#title">Home</a>
+    <a href="#overview">Overview</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#radar-engine">Radar Engine</a>
+    <a href="#classification">Classification</a>
+    <a href="#io">I/O System</a>
+    <a href="#ui">User Interface</a>
+    <a href="#participants">Participants</a>
+    <a href="#features">Features</a>
+    <a href="#usage">Usage</a>
+</nav>
+
+<!-- Slide 1: Title -->
+<section class="slide title-slide" id="title">
+    <div class="content">
+        <h1 class="slide-title">Traffic Radar Simulation</h1>
+        <p class="slide-subtitle">Simulation Tool for Radar Tracker & Classification Validation</p>
+        <br><br>
+        <p>OpenGL-based 3D Visualization | Multi-format Output | Real-time Classification</p>
+        <br>
+        <p style="margin-top: 60px; font-size: 0.9em;">Python • PyQt5 • PyQtGraph • NumPy</p>
+    </div>
+</section>
+
+<!-- Slide 2: Project Overview -->
+<section class="slide" id="overview">
+    <div class="content">
+        <h1 class="slide-title">Project Overview</h1>
+        
+        <div class="highlight-box">
+            <p><strong>Purpose:</strong> Generate realistic radar detection lists for validating Radar Tracker & Classification algorithms in automotive and traffic monitoring applications.</p>
+        </div>
+
+        <h2>Key Capabilities</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h4>🚗 Multi-Participant Simulation</h4>
+                <p>Simulate cars, trucks, two-wheelers, bicycles, and pedestrians with realistic radar signatures.</p>
+            </div>
+            <div class="feature-card">
+                <h4>📡 Radar Equation Modeling</h4>
+                <p>Physics-based received power calculation with configurable noise and range parameters.</p>
+            </div>
+            <div class="feature-card">
+                <h4>🎯 Detection & Classification</h4>
+                <p>DBSCAN clustering, multi-object tracking, and dual classification models (Rule-based & Naive Bayes).</p>
+            </div>
+            <div class="feature-card">
+                <h4>📊 Multiple Output Formats</h4>
+                <p>Real-time UDP streaming, CSV logging, and Excel export for flexible data analysis.</p>
+            </div>
+        </div>
+
+        <h2>Target Applications</h2>
+        <ul>
+            <li>Automotive radar system development and validation</li>
+            <li>ADAS (Advanced Driver Assistance Systems) algorithm testing</li>
+            <li>Traffic monitoring system prototyping</li>
+            <li>Radar tracker and classifier training data generation</li>
+        </ul>
+    </div>
+</section>
+
+<!-- Slide 3: System Architecture -->
+<section class="slide" id="architecture">
+    <div class="content">
+        <h1 class="slide-title">System Architecture</h1>
+        
+        <div class="architecture-diagram">
+            <div class="flow-container">
+                <div class="flow-box"><strong>SimEngine</strong><br><small>World & Radar Config</small></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box"><strong>Participants</strong><br><small>Traffic Objects</small></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box"><strong>Detection</strong><br><small>Radar Equation</small></div>
+            </div>
+            <br>
+            <div class="flow-container">
+                <div class="flow-box"><strong>DBSCAN</strong><br><small>Clustering</small></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box"><strong>Tracker</strong><br><small>Multi-Object</small></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box"><strong>Classifier</strong><br><small>Rule/Bayes</small></div>
+            </div>
+            <br>
+            <div class="flow-container">
+                <div class="flow-box"><strong>3D View</strong><br><small>OpenGL</small></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box"><strong>Bird's Eye</strong><br><small>2D Plot</small></div>
+                <span class="flow-arrow">→</span>
+                <div class="flow-box"><strong>Output</strong><br><small>UDP/CSV/Excel</small></div>
+            </div>
+        </div>
+
+        <h2>Module Structure</h2>
+        <div class="table-container">
+            <table>
+                <tr>
+                    <th>Module</th>
+                    <th>File</th>
+                    <th>Responsibility</th>
+                </tr>
+                <tr>
+                    <td>Main Application</td>
+                    <td><code>app.py</code></td>
+                    <td>UI orchestration, 3D visualization, user controls</td>
+                </tr>
+                <tr>
+                    <td>Simulation Engine</td>
+                    <td><code>radar_engine.py</code></td>
+                    <td>World config, radar model, participant physics, detection generation</td>
+                </tr>
+                <tr>
+                    <td>Classification</td>
+                    <td><code>classification.py</code></td>
+                    <td>DBSCAN clustering, object tracking, Rule-based & Naive Bayes classifiers</td>
+                </tr>
+                <tr>
+                    <td>I/O System</td>
+                    <td><code>radar_io.py</code></td>
+                    <td>UDP streaming, CSV logging, Excel export</td>
+                </tr>
+                <tr>
+                    <td>UI Components</td>
+                    <td><code>ui_components.py</code></td>
+                    <td>Bird's eye view, mesh generation, color mapping, FOV visualization</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- Slide 4: Radar Engine -->
+<section class="slide" id="radar-engine">
+    <div class="content">
+        <h1 class="slide-title">Radar Simulation Engine</h1>
+        
+        <div class="two-column">
+            <div>
+                <h2>Radar Configuration</h2>
+                <ul>
+                    <li><strong>Position:</strong> 3D coordinates (x, y, z)</li>
+                    <li><strong>Orientation:</strong> Yaw angle (heading)</li>
+                    <li><strong>FOV:</strong> Configurable azimuth field of view</li>
+                    <li><strong>Range:</strong> r_min to r_max (blind zone support)</li>
+                </ul>
+
+                <h3>Noise Modeling</h3>
+                <ul>
+                    <li>σ Range: Range measurement noise (m)</li>
+                    <li>σ Azimuth: Angular measurement noise (deg)</li>
+                    <li>σ Vr: Radial velocity noise (m/s)</li>
+                </ul>
+            </div>
+            <div>
+                <h2>Radar Equation</h2>
+                <div class="highlight-box">
+                    <p><strong>Received Power:</strong></p>
+                    <p style="font-family: monospace; font-size: 1.1em;">
+                        Pr(dBm) = K + 10·log₁₀(σ) - 40·log₁₀(R)
+                    </p>
+                    <br>
+                    <p><small>Where K is calibration constant, σ is RCS (m²), R is range (m)</small></p>
+                </div>
+
+                <h3>Calibration</h3>
+                <p>Default K = 81.2 dB, calibrated for:</p>
+                <ul>
+                    <li>Truck @ 50m: ~28 dBm</li>
+                    <li>Car @ 50m: ~20 dBm</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>World Configuration</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h4>Road Parameters</h4>
+                <p>X range, lane count (2/4/6), lane width (2.5-5.0m)</p>
+            </div>
+            <div class="feature-card">
+                <h4>Clutter/Guardrails</h4>
+                <p>Configurable guardrail clutter along road edges with drop probability</p>
+            </div>
+            <div class="feature-card">
+                <h4>Lane Management</h4>
+                <p>Automatic lane assignment, collision avoidance, spawn clearance</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Slide 5: Traffic Participants -->
+<section class="slide" id="participants">
+    <div class="content">
+        <h1 class="slide-title">Traffic Participants</h1>
+        
+        <h2>Supported Object Types</h2>
+        <div class="table-container">
+            <table>
+                <tr>
+                    <th>Type</th>
+                    <th>Length (m)</th>
+                    <th>Width (m)</th>
+                    <th>Height (m)</th>
+                    <th>RCS σ (m²)</th>
+                    <th>Detections</th>
+                </tr>
+                <tr>
+                    <td><strong>Car</strong></td>
+                    <td>4.5</td>
+                    <td>1.9</td>
+                    <td>1.6</td>
+                    <td>10.0</td>
+                    <td>15-40</td>
+                </tr>
+                <tr>
+                    <td><strong>Truck</strong></td>
+                    <td>10.0</td>
+                    <td>2.6</td>
+                    <td>3.5</td>
+                    <td>30.0</td>
+                    <td>30-80</td>
+                </tr>
+                <tr>
+                    <td><strong>Two-wheeler</strong></td>
+                    <td>2.2</td>
+                    <td>0.8</td>
+                    <td>1.5</td>
+                    <td>3.0</td>
+                    <td>5-12</td>
+                </tr>
+                <tr>
+                    <td><strong>Bicycle</strong></td>
+                    <td>1.8</td>
+                    <td>0.6</td>
+                    <td>1.7</td>
+                    <td>1.0</td>
+                    <td>2-6</td>
+                </tr>
+                <tr>
+                    <td><strong>Pedestrian</strong></td>
+                    <td>0.5</td>
+                    <td>0.5</td>
+                    <td>1.75</td>
+                    <td>0.5</td>
+                    <td>1-4</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Point Cloud Generation</h2>
+        <div class="highlight-box">
+            <p><strong>Realistic Surface Sampling:</strong></p>
+            <ul>
+                <li>Points sampled on visible faces (front/back, sides, top)</li>
+                <li>Weighted towards radar-facing surfaces</li>
+                <li>Corner reflector effect simulation (2x RCS at corners)</li>
+                <li>Distance-based detection count scaling</li>
+            </ul>
+        </div>
+
+        <h2>Motion Model</h2>
+        <ul>
+            <li><strong>Direction:</strong> Incoming (towards radar) or Outgoing</li>
+            <li><strong>Speed Control:</strong> IDM-like car-following with time headway</li>
+            <li><strong>Loop Mode:</strong> Continuous circulation or single pass</li>
+            <li><strong>Acceleration:</strong> a_max = 2.0 m/s², b_max = 4.0 m/s²</li>
+        </ul>
+    </div>
+</section>
+
+<!-- Slide 6: Classification Pipeline -->
+<section class="slide" id="classification">
+    <div class="content">
+        <h1 class="slide-title">Detection & Classification Pipeline</h1>
+        
+        <div class="flow-container" style="margin-bottom: 40px;">
+            <div class="flow-box" style="background: #e8f4e8;">
+                <strong>1. DBSCAN</strong><br>
+                <small>Clustering</small>
+            </div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-box" style="background: #e8e8f4;">
+                <strong>2. Tracking</strong><br>
+                <small>Association</small>
+            </div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-box" style="background: #f4e8e8;">
+                <strong>3. Classification</strong><br>
+                <small>Dual Model</small>
+            </div>
+        </div>
+
+        <div class="two-column">
+            <div>
+                <h2>1. DBSCAN Clustering</h2>
+                <p>Density-based spatial clustering to group radar detections into objects.</p>
+                <ul>
+                    <li><strong>Epsilon (ε):</strong> Maximum neighbor distance (default: 2.0m)</li>
+                    <li><strong>Min Samples:</strong> Core point threshold (default: 2)</li>
+                </ul>
+                
+                <h3>Extracted Features</h3>
+                <ul>
+                    <li>Centroid (x, y)</li>
+                    <li>Extent (width × length)</li>
+                    <li>Point count</li>
+                    <li>Mean/Std RCS</li>
+                    <li>Mean/Std radial velocity</li>
+                </ul>
+            </div>
+            <div>
+                <h2>2. Multi-Object Tracker</h2>
+                <p>Maintains persistent object IDs across frames using nearest-neighbor association.</p>
+                <ul>
+                    <li><strong>Association:</strong> Greedy distance-based matching</li>
+                    <li><strong>Motion Model:</strong> Linear prediction (constant velocity)</li>
+                    <li><strong>Track Lifecycle:</strong> min_hits to confirm, max_misses to delete</li>
+                </ul>
+
+                <h3>Track State</h3>
+                <ul>
+                    <li>Position (x, y)</li>
+                    <li>Velocity (vx, vy)</li>
+                    <li>Age, hits, misses</li>
+                    <li>Feature history (last 20 frames)</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>3. Classification Models</h2>
+        <div class="two-column">
+            <div class="feature-card">
+                <h4>Rule-Based Classifier</h4>
+                <p>Hand-crafted feature thresholds for each class:</p>
+                <ul>
+                    <li>Point count ranges</li>
+                    <li>Extent boundaries</li>
+                    <li>RCS level thresholds</li>
+                    <li>Speed constraints</li>
+                </ul>
+                <p><em>Fast, interpretable, no training required</em></p>
+            </div>
+            <div class="feature-card">
+                <h4>Naive Bayes Classifier</h4>
+                <p>Probabilistic model with Gaussian feature distributions:</p>
+                <ul>
+                    <li>Pre-trained mean/std per feature per class</li>
+                    <li>Prior probabilities</li>
+                    <li>Log-likelihood computation</li>
+                    <li>Posterior probability output</li>
+                </ul>
+                <p><em>Probabilistic confidence, adaptable</em></p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Slide 7: I/O System -->
+<section class="slide" id="io">
+    <div class="content">
+        <h1 class="slide-title">Input/Output System</h1>
+        
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h4>📡 UDP Streaming</h4>
+                <p>Real-time detection streaming over UDP socket.</p>
+                <ul>
+                    <li>Configurable IP and port</li>
+                    <li>JSON or CSV line format</li>
+                    <li>Per-detection packets</li>
+                </ul>
+            </div>
+            <div class="feature-card">
+                <h4>📄 CSV Logging</h4>
+                <p>Detection-level logging to CSV files.</p>
+                <ul>
+                    <li>Auto-creates log directories</li>
+                    <li>Flush on write for reliability</li>
+                    <li>17 detection fields</li>
+                </ul>
+            </div>
+            <div class="feature-card">
+                <h4>📊 Object Feature Logging</h4>
+                <p>Per-cycle object-level feature export.</p>
+                <ul>
+                    <li>21 feature fields</li>
+                    <li>Position, velocity, RCS</li>
+                    <li>Range, azimuth from radar</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Detection Output Fields</h2>
+        <div class="code-block">
+time_ms, det_id, participant_id, label, corner_id,
+x, y, vx, vy, rcs_dbm,
+dx, dy, dvx, dvy,
+r, az_deg, vr
+        </div>
+
+        <h2>Object Feature Fields</h2>
+        <div class="code-block">
+time_ms, participant_id, label,
+pos_x, pos_y, pos_z, vel_x, vel_y, vel_z, speed_mps,
+yaw_deg, length, width, height, sigma_m2, pr_eff_dbm,
+range_m, azimuth_deg, direction, lane_y, num_detections
+        </div>
+
+        <h2>Excel Export</h2>
+        <p>Optional export to .xlsx format using openpyxl library for post-processing in spreadsheet applications.</p>
+    </div>
+</section>
+
+<!-- Slide 8: User Interface -->
+<section class="slide" id="ui">
+    <div class="content">
+        <h1 class="slide-title">User Interface</h1>
+        
+        <h2>Main Window Components</h2>
+        <div class="two-column">
+            <div>
+                <h3>Left Panel - Control Tabs</h3>
+                <ul>
+                    <li><strong>World:</strong> Road dimensions, lanes, width</li>
+                    <li><strong>Radar:</strong> Position, FOV, range, noise</li>
+                    <li><strong>Traffic:</strong> Add/remove participants</li>
+                    <li><strong>Participant Props:</strong> Edit selected object</li>
+                    <li><strong>IO:</strong> UDP, CSV, feature logging</li>
+                    <li><strong>View:</strong> Display toggles</li>
+                </ul>
+            </div>
+            <div>
+                <h3>Center - 3D OpenGL View</h3>
+                <ul>
+                    <li>Real-time 3D scene rendering</li>
+                    <li>Transparent objects with wireframe</li>
+                    <li>Color-coded detections (RCS heat map)</li>
+                    <li>FOV sector visualization</li>
+                    <li>Track IDs and velocity vectors</li>
+                    <li>Interactive camera controls</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Right Panel - Classification</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h4>DBSCAN Controls</h4>
+                <p>Epsilon, min samples, cluster visualization toggles</p>
+            </div>
+            <div class="feature-card">
+                <h4>Tracking Controls</h4>
+                <p>Enable tracking, show track IDs, velocity vectors</p>
+            </div>
+            <div class="feature-card">
+                <h4>Classification Results</h4>
+                <p>Model selection, confidence table, detailed breakdown</p>
+            </div>
+            <div class="feature-card">
+                <h4>Model Comparison</h4>
+                <p>Rule-based vs Naive Bayes accuracy metrics</p>
+            </div>
+        </div>
+
+        <h2>Bird's Eye View Window</h2>
+        <div class="highlight-box">
+            <p>Secondary 2D top-down view with:</p>
+            <ul>
+                <li>Road and lane visualization</li>
+                <li>Object positions with type-based colors</li>
+                <li>Bounding boxes with classification labels</li>
+                <li>HUD overlay with metrics (range, azimuth, power)</li>
+                <li>Zoomable and pannable interface</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- Slide 9: Key Features -->
+<section class="slide" id="features">
+    <div class="content">
+        <h1 class="slide-title">Key Features Summary</h1>
+        
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h4>🎯 Realistic Point Cloud</h4>
+                <p>Surface-based sampling with radar visibility weighting and corner reflector effects.</p>
+            </div>
+            <div class="feature-card">
+                <h4>🚦 Traffic Management</h4>
+                <p>Lane-based spawning, collision avoidance, and car-following behavior.</p>
+            </div>
+            <div class="feature-card">
+                <h4>📏 Configurable Parameters</h4>
+                <p>Adjustable world, radar, and object properties through UI controls.</p>
+            </div>
+            <div class="feature-card">
+                <h4>🎲 Random Traffic Mode</h4>
+                <p>Automatic random spawning of diverse traffic participants.</p>
+            </div>
+            <div class="feature-card">
+                <h4>📈 Dual Classification</h4>
+                <p>Compare Rule-based and Naive Bayes classifiers in real-time.</p>
+            </div>
+            <div class="feature-card">
+                <h4>🔄 Continuous Tracking</h4>
+                <p>Persistent object IDs with feature history for temporal analysis.</p>
+            </div>
+            <div class="feature-card">
+                <h4>🌫️ Clutter Simulation</h4>
+                <p>Guardrail/edge clutter with configurable density and drop probability.</p>
+            </div>
+            <div class="feature-card">
+                <h4>📊 Ground Truth</h4>
+                <p>Compare classification against known participant labels.</p>
+            </div>
+        </div>
+
+        <h2>Visualization Features</h2>
+        <ul>
+            <li><strong>RCS Heat Map:</strong> Blue → Cyan → Green → Yellow → Red color scale</li>
+            <li><strong>Object Colors:</strong> Car (gray), Truck (white), Two-wheeler (yellow), Bicycle (green), Pedestrian (magenta)</li>
+            <li><strong>Transparent Objects:</strong> See-through meshes with visible wireframe edges</li>
+            <li><strong>Classification Labels:</strong> 3D text or marker flags above tracked objects</li>
+            <li><strong>Cluster Boundaries:</strong> Rectangular outlines around detection clusters</li>
+        </ul>
+    </div>
+</section>
+
+<!-- Slide 10: Usage -->
+<section class="slide" id="usage">
+    <div class="content">
+        <h1 class="slide-title">Usage Guide</h1>
+        
+        <h2>Quick Start</h2>
+        <div class="code-block">
+# Install dependencies
+pip install numpy PyQt5 pyqtgraph pyopengl
+
+# Run the application
+python app.py
+        </div>
+
+        <h2>Typical Workflow</h2>
+        <ol>
+            <li><strong>Configure World:</strong> Set road dimensions and lane count</li>
+            <li><strong>Configure Radar:</strong> Position, FOV, range, noise parameters</li>
+            <li><strong>Add Traffic:</strong> Select type, direction, speed, lane</li>
+            <li><strong>Enable Output:</strong> Configure UDP/CSV as needed</li>
+            <li><strong>Start Simulation:</strong> Click Start in toolbar</li>
+            <li><strong>Monitor:</strong> Observe 3D view and classification panel</li>
+            <li><strong>Analyze:</strong> Open Bird's Eye View for 2D metrics</li>
+        </ol>
+
+        <h2>Dependencies</h2>
+        <div class="table-container">
+            <table>
+                <tr>
+                    <th>Package</th>
+                    <th>Purpose</th>
+                </tr>
+                <tr>
+                    <td><code>numpy</code></td>
+                    <td>Numerical computations, array operations</td>
+                </tr>
+                <tr>
+                    <td><code>PyQt5</code></td>
+                    <td>GUI framework, widgets, events</td>
+                </tr>
+                <tr>
+                    <td><code>pyqtgraph</code></td>
+                    <td>Fast plotting, OpenGL 3D visualization</td>
+                </tr>
+                <tr>
+                    <td><code>pyopengl</code></td>
+                    <td>OpenGL bindings for 3D rendering</td>
+                </tr>
+                <tr>
+                    <td><code>openpyxl</code> (optional)</td>
+                    <td>Excel file export</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>Output Examples</h2>
+        <p>Detection data streams via UDP or logs to CSV with per-detection information including position, velocity, RCS, and ground truth labels - ready for tracker/classifier validation.</p>
+    </div>
+</section>
+
+<!-- Slide 11: Conclusion -->
+<section class="slide title-slide">
+    <div class="content">
+        <h1 class="slide-title">Thank You</h1>
+        <br>
+        <p class="slide-subtitle">Traffic Radar Simulation</p>
+        <br><br>
+        <div style="text-align: center;">
+            <div class="metric-box" style="background: transparent; border-color: #fff;">
+                <div class="metric-value" style="color: #fff;">5</div>
+                <div class="metric-label" style="color: #ccc;">Object Types</div>
+            </div>
+            <div class="metric-box" style="background: transparent; border-color: #fff;">
+                <div class="metric-value" style="color: #fff;">2</div>
+                <div class="metric-label" style="color: #ccc;">Classifiers</div>
+            </div>
+            <div class="metric-box" style="background: transparent; border-color: #fff;">
+                <div class="metric-value" style="color: #fff;">3</div>
+                <div class="metric-label" style="color: #ccc;">Output Formats</div>
+            </div>
+            <div class="metric-box" style="background: transparent; border-color: #fff;">
+                <div class="metric-value" style="color: #fff;">2</div>
+                <div class="metric-label" style="color: #ccc;">Visualization Views</div>
+            </div>
+        </div>
+        <br><br>
+        <p style="color: #999;">Comprehensive radar simulation for validation and testing</p>
+    </div>
+</section>
+
+</body>
+</html>
